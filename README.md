@@ -26,3 +26,8 @@ forex-quant-risk-engine/
 ├── requirements.txt             # Python package dependencies
 ├── .env.example                 # Environment variables template
 └── README.md                    # Project documentation
+
+Installation
+git clone [https://github.com/bamideleadedeji/forex-quant-risk-engine.git
+cd forex-quant-risk-engine
+pip install -r requirements.txt

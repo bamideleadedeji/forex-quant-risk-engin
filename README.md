@@ -1,2 +1,28 @@
-# forex-quant-risk-engin
-Automated multi-asset Forex quant risk engine powering a 3-month demo pilot on OANDA v20 API. Integrates 0.01 lot/$1k equity position sizing, Finnhub macro news blackout filters (Fed/ECB/BoE/BoJ), and automated server-side SL/TP risk controls.
+#  Institutional Multi-Asset Forex Quantitative Risk & Execution Engine
+
+An automated, data-driven quantitative trading engine engineered for systematic multi-asset Forex trading on the **OANDA v20 REST API**. 
+
+This system eliminates manual trading fatigue, emotional biases, and news-spike drawdowns by deploying a strict capital preservation framework across a G7 major currency basket (`EUR/USD`, `GBP/USD`, `USD/JPY`, `AUD/USD`, `USD/CAD`, `USD/CHF`).
+
+---
+
+##  Core Institutional Safeguards
+
+* **Proportional Equity Position Sizing:** Automatically scales order sizes at **`0.01 Lots (1,000 units) per $1,000 Account Equity`**. As portfolio equity grows, trade size expands proportionally; during drawdowns, position size contracts automatically to safeguard capital.
+* **Automated Macroeconomic News Blackout Filter:** Connects to live macroeconomic calendar feeds (via Finnhub API). Automatically holds execution and protects open trades **15 minutes before and after** high-impact news events (e.g., US NFP, CPI, Central Bank rate decisions).
+* **Server-Side Risk Controls:** Every trade automatically attaches non-negotiable, server-enforced **Stop-Loss** and **Take-Profit** orders directly at market entry.
+* **Basket Exposure Limits:** Capping concurrent open positions across the currency basket to prevent over-leverage and correlated USD exposure.
+
+---
+
+##  Repository Architecture
+
+```text
+forex-quant-risk-engine/
+├── .github/
+│   └── workflows/
+│       └── cron_execution.yml   # 15-minute GitHub Actions automated workflow
+├── multi_forex_quant_bot.py     # Main multi-asset trading engine & news filter
+├── requirements.txt             # Python package dependencies
+├── .env.example                 # Environment variables template
+└── README.md                    # Project documentation

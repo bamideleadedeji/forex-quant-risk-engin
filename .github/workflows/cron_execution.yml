@@ -44,13 +44,18 @@ jobs:
           FINNHUB_API_KEY: ${{ secrets.FINNHUB_API_KEY }}
         run: |
           $mt5Path = Get-ChildItem -Path "C:\Program Files" -Filter "terminal64.exe" -Recurse -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FullName -First 1
-          
-          if ($mt5Path) {$mt5Dir = Split-Path -Path $mt5Path -Parent$configContent = "[Common]`r`nLogin=$($env:EXNESS_MT5_LOGIN)`r`nPassword=$($env:EXNESS_MT5_PASSWORD)`r`nServer=$($env:EXNESS_MT5_SERVER)`r`nEnableNews=0`r`n"
+          if ($mt5Path) {
+              $mt5Dir = Split-Path -Path$mt5Path -Parent
               $configPath = Join-Path -Path$mt5Dir -ChildPath "config.ini"
-              Set-Content -Path $configPath -Value$configContent
+              
+              " [Common]" | Out-File -FilePath $configPath -Encoding ascii
+              "Login=$env:EXNESS_MT5_LOGIN" \vert{} Out-File -FilePath $configPath -Encoding ascii -Append
+              "Password=$env:EXNESS_MT5_PASSWORD" \vert{} Out-File -FilePath $configPath -Encoding ascii -Append
+              "Server=$env:EXNESS_MT5_SERVER" \vert{} Out-File -FilePath $configPath -Encoding ascii -Append
+              "EnableNews=0" | Out-File -FilePath $configPath -Encoding ascii -Append
               
               Write-Host "Launching MT5 Terminal from: $mt5Path"
-              Start-Process -FilePath $mt5Path -ArgumentList "/config:$configPath /portable"
+              Start-Process -FilePath $mt5Path -ArgumentList "/config:`"$configPath`" /portable"
               Start-Sleep -Seconds 25
           } else {
               Write-Host "Warning: terminal64.exe binary path not found."

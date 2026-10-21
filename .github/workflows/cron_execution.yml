@@ -4,11 +4,11 @@ on:
   schedule:
     # Runs every 15 minutes Monday through Friday (Active Forex Hours)
     - cron: '*/15 * * * 1-5'
-  workflow_dispatch:
+  workflow_dispatch: # Allows manual triggering from GitHub Actions tab
 
 jobs:
   run-quant-engine:
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
 
     steps:
       - name: Checkout Repository Code
@@ -24,10 +24,11 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Execute Multi-Forex Trading Cycle
+      - name: Execute Multi-Forex Exness MT5 Trading Cycle
         env:
-          OANDA_ACCOUNT_ID: ${{ secrets.OANDA_ACCOUNT_ID }}
-          OANDA_ACCESS_TOKEN: ${{ secrets.OANDA_ACCESS_TOKEN }}
+          EXNESS_MT5_LOGIN: ${{ secrets.EXNESS_MT5_LOGIN }}
+          EXNESS_MT5_PASSWORD: ${{ secrets.EXNESS_MT5_PASSWORD }}
+          EXNESS_MT5_SERVER: ${{ secrets.EXNESS_MT5_SERVER }}
           FINNHUB_API_KEY: ${{ secrets.FINNHUB_API_KEY }}
         run: |
           python multi_forex_quant_bot.py

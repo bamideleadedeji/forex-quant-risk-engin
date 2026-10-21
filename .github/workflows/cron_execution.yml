@@ -33,11 +33,9 @@ jobs:
           
           Write-Host "Installing MetaTrader 5 silently..."
           Start-Process -FilePath ".\exness5setup.exe" -ArgumentList "/auto" -Wait
-          
-          Write-Host "Verifying MetaTrader 5 installation..."
           Start-Sleep -Seconds 10
 
-      - name: Launch MT5 Background Process & Execute Quant Engine
+      - name: Configure Headless Startup & Execute Quant Engine
         shell: powershell
         env:
           PYTHONIOENCODING: "utf-8"
@@ -46,18 +44,30 @@ jobs:
           EXNESS_MT5_SERVER: ${{ secrets.EXNESS_MT5_SERVER }}
           FINNHUB_API_KEY: ${{ secrets.FINNHUB_API_KEY }}
         run: |
-          # Locate installed terminal64.exe
-          $mt5Path = "C:\Program Files\MetaTrader 5\terminal64.exe"
-          if (-not (Test-Path $mt5Path)) {
-              $mt5Path = Get-ChildItem -Path "C:\Program Files" -Filter "terminal64.exe" -Recurse -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FullName -First 1
-          }
+          # Locate terminal64.exe
+          $mt5Path = Get-ChildItem -Path "C:\Program Files" -Filter "terminal64.exe" -Recurse -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FullName -First 1
           
           if ($mt5Path) {
-              Write-Host "Launching MT5 Terminal from: $mt5Path"
-              Start-Process -FilePath $mt5Path -ArgumentList "/portable"
-              Start-Sleep -Seconds 15
+              $mt5Dir = Split-Path -Path $mt5Path -Parent
+              
+              # Write headless startup configuration
+              $configContent = @"
+[Common]
+Login=$($env:EXNESS_MT5_LOGIN)
+Password=$($env:EXNESS_MT5_PASSWORD)
+Server=$($env:EXNESS_MT5_SERVER)
+EnableNews=0
+"@
+              $configPath = Join-Path -Path $mt5Dir -ChildPath "config.ini"
+              Set-Content -Path $configPath -Value $configContent
+              
+              Write-Host "Launching MT5 Terminal headlessly from: $mt5Path"
+              Start-Process -FilePath $mt5Path -ArgumentList "/config:$configPath /portable"
+              
+              # Wait for IPC socket initialization
+              Start-Sleep -Seconds 25
           } else {
-              Write-Host "Warning: terminal64.exe binary path not found. Proceeding with standard IPC initialization."
+              Write-Host "Warning: terminal64.exe binary path not found."
           }
           
           # Execute Quantitative Engine Cycle

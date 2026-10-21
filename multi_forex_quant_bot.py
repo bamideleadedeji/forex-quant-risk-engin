@@ -7,6 +7,14 @@ import numpy as np
 from datetime import datetime, timedelta, timezone
 import MetaTrader5 as mt5
 
+# Force UTF-8 Encoding for Windows Console / GitHub Actions Runners
+if sys.platform == "win32":
+    try:
+        sys.stdout.reconfigure(encoding='utf-8')
+        sys.stderr.reconfigure(encoding='utf-8')
+    except Exception:
+        pass
+
 # ----------------------------------------------------------------------
 # 1. Credentials & Configuration (Exness MT5 & Finnhub)
 # ----------------------------------------------------------------------
@@ -36,16 +44,16 @@ TP_PIPS = 40.0  # Take Profit in pips
 def initialize_mt5_connection():
     """Initializes connection to Exness MT5 Terminal."""
     if not mt5.initialize():
-        print(f"❌ MT5 Initialization failed: {mt5.last_error()}")
+        print(f"[FAIL] MT5 Initialization failed: {mt5.last_error()}")
         sys.exit(1)
         
     authorized = mt5.login(login=MT5_LOGIN, password=MT5_PASSWORD, server=MT5_SERVER)
     if not authorized:
-        print(f"❌ MT5 Login failed for account #{MT5_LOGIN} on {MT5_SERVER}: {mt5.last_error()}")
+        print(f"[FAIL] MT5 Login failed for account #{MT5_LOGIN} on {MT5_SERVER}: {mt5.last_error()}")
         mt5.shutdown()
         sys.exit(1)
         
-    print(f"✅ Connected to Exness MT5 Account #{MT5_LOGIN} ({MT5_SERVER})")
+    print(f"[SUCCESS] Connected to Exness MT5 Account #{MT5_LOGIN} ({MT5_SERVER})")
 
 # ----------------------------------------------------------------------
 # 3. Multi-Central Bank Macro News Filter
@@ -99,11 +107,7 @@ def resolve_exness_symbol(base_pair: str) -> str:
     return base_pair
 
 def calculate_proportional_lot_size(equity: float) -> tuple[float, int]:
-    """
-    Calculates exact lot sizing proportional to equity:
-    0.01 Lots (1,000 units) per $1,000 Account Equity.
-    For a $500 account, lot size = 0.01 lots (1,000 units minimum).
-    """
+    """Calculates lot sizing proportional to equity (0.01 lot per $1,000 equity)."""
     scaling_factor = equity / 1000.0
     lots = round(scaling_factor * BASE_LOT_PER_1000_EQUITY, 2)
     active_lots = max(0.01, lots)
@@ -126,10 +130,8 @@ def evaluate_market_signal(symbol: str) -> str:
     prev_fast, curr_fast = df['ema_fast'].iloc[-2], df['ema_fast'].iloc[-1]
     prev_slow, curr_slow = df['ema_slow'].iloc[-2], df['ema_slow'].iloc[-1]
 
-    # Bullish Crossover
     if prev_fast <= prev_slow and curr_fast > curr_slow:
         return "BUY"
-    # Bearish Crossover
     elif prev_fast >= prev_slow and curr_fast < curr_slow:
         return "SELL"
 
@@ -139,13 +141,11 @@ def evaluate_market_signal(symbol: str) -> str:
 # 5. Order Placement Execution Engine
 # ----------------------------------------------------------------------
 def execute_market_order(symbol: str, order_type: str, lot_size: float) -> bool:
-    """
-    Constructs and sends trade execution request to Exness MT5 server with SL & TP.
-    """
+    """Constructs and sends trade execution request to Exness MT5 server."""
     tick = mt5.symbol_info_tick(symbol)
     symbol_info = mt5.symbol_info(symbol)
     if tick is None or symbol_info is None:
-        print(f"  ❌ Order Failed: Unable to fetch market info for {symbol}")
+        print(f"  [FAIL] Order Failed: Unable to fetch market info for {symbol}")
         return False
 
     point = symbol_info.point
@@ -179,14 +179,14 @@ def execute_market_order(symbol: str, order_type: str, lot_size: float) -> bool:
 
     result = mt5.order_send(request)
     if result is None:
-        print(f"  ❌ Order send failed for {symbol}: No response from MT5 server")
+        print(f"  [FAIL] Order send failed for {symbol}: No response from MT5 server")
         return False
 
     if result.retcode != mt5.TRADE_RETCODE_DONE:
-        print(f"  ❌ Order execution rejected for {symbol}: Retcode {result.retcode} ({result.comment})")
+        print(f"  [FAIL] Order execution rejected for {symbol}: Retcode {result.retcode} ({result.comment})")
         return False
 
-    print(f"  🚀 LIVE ORDER EXECUTED: {order_type} {lot_size} Lots on {symbol} @ {price:.5f} | SL: {sl:.5f} | TP: {tp:.5f} (Ticket #{result.order})")
+    print(f"  [ORDER PLACED] {order_type} {lot_size} Lots on {symbol} @ {price:.5f} | SL: {sl:.5f} | TP: {tp:.5f} (Ticket #{result.order})")
     return True
 
 # ----------------------------------------------------------------------
@@ -204,15 +204,15 @@ def run_multi_asset_quant_cycle():
     # Step B: High-Impact Macro News Filter Check
     is_news, news_msg = is_news_blackout_active()
     if is_news:
-        print(f"🚨 MULTI-ASSET NEWS BLACKOUT TRIGGERED: {news_msg}")
-        print("🛡️ Holding execution. News volatility protection active.")
+        print(f"[NEWS BLACKOUT] {news_msg}")
+        print("[HOLD] Holding execution. News volatility protection active.")
         mt5.shutdown()
         return
 
     # Step C: Account Diagnostics & Capital Scaling
     account_info = mt5.account_info()
     if account_info is None:
-        print("❌ Failed to retrieve MT5 account info.")
+        print("[FAIL] Failed to retrieve MT5 account info.")
         mt5.shutdown()
         return
 
@@ -223,7 +223,6 @@ def run_multi_asset_quant_cycle():
     positions = mt5.positions_get()
     open_count = len(positions) if positions is not None else 0
 
-    # Track symbols that currently have open trades
     open_symbols = [pos.symbol for pos in positions] if positions else []
 
     print(f"• Account Equity (NAV): ${equity:,.2f} | Balance: ${balance:,.2f}")
@@ -233,12 +232,12 @@ def run_multi_asset_quant_cycle():
 
     # Step D: Evaluate Open Position Limit Guard
     if open_count >= MAX_CONCURRENT_OPEN_TRADES:
-        print("🛡️ Max concurrent trade limit reached. Holding open positions for exit signals.")
+        print("[HOLD] Max concurrent trade limit reached. Holding open positions for exit signals.")
         mt5.shutdown()
         return
 
     # Step E: Scan FX Basket, Evaluate Signals, and Execute Orders
-    print("📊 Active Exness FX Basket Quotes & Signal Execution Matrix:")
+    print("Active Exness FX Basket Quotes & Signal Execution Matrix:")
     for base_pair in BASKET_PAIRS:
         symbol = resolve_exness_symbol(base_pair)
         tick = mt5.symbol_info_tick(symbol)
@@ -250,12 +249,10 @@ def run_multi_asset_quant_cycle():
             point = symbol_info.point if symbol_info else 0.00001
             spread_pips = round((spot_ask - spot_bid) / point / 10, 1)
             
-            # Evaluate EMA trend signal
             signal = evaluate_market_signal(symbol)
             
             print(f"  └─ {symbol:<8} | Bid: {spot_bid:<8.5f} | Ask: {spot_ask:<8.5f} | Spread: {spread_pips:>4.1f} pips | Signal: {signal:<7}")
 
-            # Execute trade if signal is active and symbol isn't already open
             if signal in ["BUY", "SELL"] and symbol not in open_symbols:
                 if open_count < MAX_CONCURRENT_OPEN_TRADES:
                     executed = execute_market_order(symbol, signal, active_lots)
@@ -263,12 +260,12 @@ def run_multi_asset_quant_cycle():
                         open_count += 1
                         open_symbols.append(symbol)
                 else:
-                    print(f"     🛡️ Max trade count reached. Skipping execution for {symbol}.")
+                    print(f"     [HOLD] Max trade count reached. Skipping execution for {symbol}.")
         else:
             print(f"  └─ {symbol:<8} | Quote Fetch Note: Market closed or symbol inactive")
 
     print("-" * 66)
-    print("✅ System cycle complete. 0.01 lot / $1,000 equity rule enforced.")
+    print("[COMPLETE] System cycle complete. 0.01 lot / $1,000 equity rule enforced.")
     mt5.shutdown()
 
 if __name__ == "__main__":

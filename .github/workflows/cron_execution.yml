@@ -48,7 +48,7 @@ jobs:
               $mt5Dir = Split-Path -Path$mt5Path -Parent
               $configPath = Join-Path -Path$mt5Dir -ChildPath "config.ini"
               
-              " [Common]" | Out-File -FilePath $configPath -Encoding ascii
+              "[Common]" | Out-File -FilePath $configPath -Encoding ascii
               "Login=$env:EXNESS_MT5_LOGIN" \vert{} Out-File -FilePath $configPath -Encoding ascii -Append
               "Password=$env:EXNESS_MT5_PASSWORD" \vert{} Out-File -FilePath $configPath -Encoding ascii -Append
               "Server=$env:EXNESS_MT5_SERVER" \vert{} Out-File -FilePath $configPath -Encoding ascii -Append

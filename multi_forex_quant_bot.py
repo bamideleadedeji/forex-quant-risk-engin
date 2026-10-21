@@ -5,38 +5,51 @@ import requests
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta, timezone
+import MetaTrader5 as mt5
 
 # ----------------------------------------------------------------------
-# 1. Credentials & Configuration
+# 1. Credentials & Configuration (Exness MT5 & Finnhub)
 # ----------------------------------------------------------------------
-OANDA_ACCOUNT_ID = os.environ.get("OANDA_ACCOUNT_ID", "101-001-XXXXXXX-001")
-OANDA_ACCESS_TOKEN = os.environ.get("OANDA_ACCESS_TOKEN", "your_oanda_demo_token_here")
-OANDA_ENVIRONMENT = "practice"  # 'practice' for Demo, 'live' for Real
+MT5_LOGIN = int(os.environ.get("EXNESS_MT5_LOGIN", "81908274"))
+MT5_PASSWORD = os.environ.get("EXNESS_MT5_PASSWORD", "b8!T4*xQ9w")
+MT5_SERVER = os.environ.get("EXNESS_MT5_SERVER", "Exness-MT5Trial10")
 
-NEWS_API_KEY = os.environ.get("FINNHUB_API_KEY", "your_finnhub_key_here")
-
-OANDA_BASE_URL = "https://api-fxpractice.oanda.com/v20" if OANDA_ENVIRONMENT == "practice" else "https://api-fxtrade.oanda.com/v20"
-
-HEADERS = {
-    "Authorization": f"Bearer {OANDA_ACCESS_TOKEN}",
-    "Content-Type": "application/json"
-}
+# Finnhub API Key for Macro Economic Calendar Filtering
+NEWS_API_KEY = os.environ.get("FINNHUB_API_KEY", "dbcbqbhr01qioil6nl50dbcbqbhr01qioil6nl5g")
 
 # The 6 Major Currency Pairs Basket
-BASKET_PAIRS = ["EUR_USD", "GBP_USD", "USD_JPY", "AUD_USD", "USD_CAD", "USD_CHF"]
+BASKET_PAIRS = ["EURUSD", "GBPUSD", "USDJPY", "AUDUSD", "USDCAD", "USDCHF"]
 
-# Execution Parameters
+# Quantitative Execution & Risk Parameters
 BASE_LOT_PER_1000_EQUITY = 0.01  # 0.01 Lots (1,000 units) per $1,000 Account Equity
 MAX_CONCURRENT_OPEN_TRADES = 3   # Maximum simultaneous trades allowed across basket
 NEWS_BLACKOUT_MINUTES = 15      # Pause trading 15m before & after high-impact news
 
-def get_pip_location(pair: str) -> float:
-    return 0.01 if "JPY" in pair else 0.0001
+# ----------------------------------------------------------------------
+# 2. MT5 Terminal Connection Handler
+# ----------------------------------------------------------------------
+def initialize_mt5_connection():
+    """Initializes connection to Exness MT5 Terminal."""
+    if not mt5.initialize():
+        print(f"❌ MT5 Initialization failed: {mt5.last_error()}")
+        sys.exit(1)
+        
+    authorized = mt5.login(login=MT5_LOGIN, password=MT5_PASSWORD, server=MT5_SERVER)
+    if not authorized:
+        print(f"❌ MT5 Login failed for account #{MT5_LOGIN} on {MT5_SERVER}: {mt5.last_error()}")
+        mt5.shutdown()
+        sys.exit(1)
+        
+    print(f"✅ Connected to Exness MT5 Account #{MT5_LOGIN} ({MT5_SERVER})")
 
 # ----------------------------------------------------------------------
-# 2. Multi-Central Bank Macro News Filter
+# 3. Multi-Central Bank Macro News Filter
 # ----------------------------------------------------------------------
 def is_news_blackout_active() -> tuple[bool, str]:
+    """
+    Checks Finnhub economic calendar for High-Impact macro events across G7 economies
+    within the ±15-minute window.
+    """
     try:
         now_utc = datetime.now(timezone.utc)
         start_date = (now_utc - timedelta(minutes=NEWS_BLACKOUT_MINUTES)).strftime("%Y-%m-%d")
@@ -67,78 +80,101 @@ def is_news_blackout_active() -> tuple[bool, str]:
         return False, f"News Feed Note: {str(e)}"
 
 # ----------------------------------------------------------------------
-# 3. Account Diagnostics & Proportional Sizing Engine
+# 4. Symbol Resolution & Proportional Sizing Engine
 # ----------------------------------------------------------------------
-def get_account_summary() -> dict:
-    url = f"{OANDA_BASE_URL}/accounts/{OANDA_ACCOUNT_ID}/summary"
-    res = requests.get(url, headers=HEADERS, timeout=10)
-    res.raise_for_status()
-    summary = res.json().get("account", {})
-    return {
-        "nav": float(summary.get("NAV", 0.0)),
-        "balance": float(summary.get("balance", 0.0)),
-        "unrealized_pnl": float(summary.get("unrealizedPL", 0.0)),
-        "open_position_count": int(summary.get("openPositionCount", 0))
-    }
+def resolve_exness_symbol(base_pair: str) -> str:
+    """Detects symbol suffix on Exness accounts (e.g. EURUSD vs EURUSDm)."""
+    possible_symbols = [base_pair, f"{base_pair}m", f"{base_pair}.c", f"{base_pair}c"]
+    for sym in possible_symbols:
+        info = mt5.symbol_info(sym)
+        if info is not None:
+            if not info.visible:
+                mt5.symbol_select(sym, True)
+            return sym
+    return base_pair
 
-def get_pair_quote(pair: str) -> float:
-    url = f"{OANDA_BASE_URL}/instruments/{pair}/candles?count=1&price=M&granularity=M1"
-    res = requests.get(url, headers=HEADERS, timeout=5)
-    res.raise_for_status()
-    candles = res.json().get("candles", [])
-    if candles:
-        return float(candles[0]["mid"]["c"])
-    raise ValueError(f"Failed to fetch quote for {pair}")
-
-def calculate_proportional_lot_units(nav: float) -> tuple[float, int]:
-    scaling_factor = nav / 1000.0
+def calculate_proportional_lot_size(equity: float) -> tuple[float, int]:
+    """
+    Calculates exact lot sizing proportional to equity:
+    0.01 Lots (1,000 units) per $1,000 Account Equity.
+    For a $500 account, lot size = 0.01 lots (1,000 units minimum).
+    """
+    scaling_factor = equity / 1000.0
     lots = round(scaling_factor * BASE_LOT_PER_1000_EQUITY, 2)
-    units = int(lots * 100000)
-    return max(0.01, lots), max(1000, units)
+    active_lots = max(0.01, lots)
+    active_units = int(active_lots * 100000)
+    return active_lots, active_units
 
 # ----------------------------------------------------------------------
-# 4. Multi-Asset Execution Loop
+# 5. Multi-Asset Execution Loop
 # ----------------------------------------------------------------------
 def run_multi_asset_quant_cycle():
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     print(f"\n==================================================================")
-    print(f"[{timestamp}] Multi-Asset Proportional Risk Automation Engine")
+    print(f"[{timestamp}] Multi-Asset Proportional Risk Automation Engine (Exness MT5)")
     print(f"==================================================================")
 
+    # Step A: Initialize MT5 Terminal Connection
+    initialize_mt5_connection()
+
+    # Step B: High-Impact Macro News Filter Check
     is_news, news_msg = is_news_blackout_active()
     if is_news:
         print(f"🚨 MULTI-ASSET NEWS BLACKOUT TRIGGERED: {news_msg}")
         print("🛡️ Holding execution. News volatility protection active.")
+        mt5.shutdown()
         return
 
-    summary = get_account_summary()
-    nav = summary['nav']
-    active_lots, active_units = calculate_proportional_lot_units(nav)
+    # Step C: Account Diagnostics & Capital Scaling
+    account_info = mt5.account_info()
+    if account_info is None:
+        print("❌ Failed to retrieve MT5 account info.")
+        mt5.shutdown()
+        return
+
+    equity = account_info.equity
+    balance = account_info.balance
+    active_lots, active_units = calculate_proportional_lot_size(equity)
     
-    print(f"• Account Equity (NAV): ${nav:,.2f} | Balance: ${summary['balance']:,.2f}")
+    positions = mt5.positions_get()
+    open_count = len(positions) if positions is not None else 0
+
+    print(f"• Account Equity (NAV): ${equity:,.2f} | Balance: ${balance:,.2f}")
     print(f"• Dynamic Sizing Rule: {active_lots:.2f} Lots ({active_units:,} Units) per Trade")
-    print(f"• Total Open Positions across Basket: {summary['open_position_count']} / Max Allowed: {MAX_CONCURRENT_OPEN_TRADES}")
+    print(f"• Total Open Positions across Basket: {open_count} / Max Allowed: {MAX_CONCURRENT_OPEN_TRADES}")
     print("-" * 66)
 
-    if summary['open_position_count'] >= MAX_CONCURRENT_OPEN_TRADES:
+    # Step D: Evaluate Open Position Limit Guard
+    if open_count >= MAX_CONCURRENT_OPEN_TRADES:
         print("🛡️ Max concurrent trade limit reached. Holding open positions for exit signals.")
+        mt5.shutdown()
         return
 
-    print("📊 Active FX Basket Quotes & Position Sizing Matrix:")
-    for pair in BASKET_PAIRS:
-        try:
-            spot = get_pair_quote(pair)
-            pip_loc = get_pip_location(pair)
+    # Step E: Iterate and Monitor FX Basket Quotes & Risk
+    print("📊 Active Exness FX Basket Quotes & Position Sizing Matrix:")
+    for base_pair in BASKET_PAIRS:
+        symbol = resolve_exness_symbol(base_pair)
+        tick = mt5.symbol_info_tick(symbol)
+        
+        if tick is not None:
+            spot_bid = tick.bid
+            spot_ask = tick.ask
+            symbol_info = mt5.symbol_info(symbol)
+            point = symbol_info.point if symbol_info else 0.00001
+            spread_pips = round((spot_ask - spot_bid) / point / 10, 1)
             
-            sl_distance = 20 * pip_loc
-            tp_distance = 40 * pip_loc
+            # Stop-Loss / Take-Profit calculations (20 pips SL / 40 pips TP)
+            pip_location = 0.01 if "JPY" in symbol else 0.0001
+            sl_distance = 20 * pip_location
+            tp_distance = 40 * pip_location
             
-            print(f"  └─ {pair:<7} | Spot: {spot:<9.5f} | Size: {active_lots:.2f} Lots ({active_units:>6,} units) | SL: {sl_distance:.4f} | TP: {tp_distance:.4f}")
-        except Exception as err:
-            print(f"  └─ {pair:<7} | Quote Fetch Note: {str(err)}")
+            print(f"  └─ {symbol:<8} | Bid: {spot_bid:<8.5f} | Ask: {spot_ask:<8.5f} | Spread: {spread_pips:>4.1f} pips | Size: {active_lots:.2f} Lots ({active_units:>6,} units) | SL: {sl_distance:.4f} | TP: {tp_distance:.4f}")
+        else:
+            print(f"  └─ {symbol:<8} | Quote Fetch Note: Market closed or symbol inactive")
 
     print("-" * 66)
     print("✅ System monitoring active. 0.01 lot / $1,000 equity rule enforced.")
+    mt5.shutdown()
 
 if __name__ == "__main__":
     run_multi_asset_quant_cycle()

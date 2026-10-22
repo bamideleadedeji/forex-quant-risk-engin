@@ -1,0 +1,67 @@
+name: Multi-Forex Automated Quant Cycle
+
+on:
+  schedule:
+    - cron: '*/15 * * * 1-5'
+  workflow_dispatch:
+
+jobs:
+  run-quant-engine:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout Repository Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install Python Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Download & Install Exness MT5 Terminal
+        shell: powershell
+        run: |
+          Write-Host "Downloading Exness MT5 Setup..."
+          $url = "https://download.mql5.com/cdn/web/exness.technologies.ltd/mt5/exness5setup.exe"
+          Invoke-WebRequest -Uri $url -OutFile "exness5setup.exe"
+          
+          Write-Host "Installing MetaTrader 5 silently..."
+          Start-Process -FilePath ".\exness5setup.exe" -ArgumentList "/auto" -Wait
+          Start-Sleep -Seconds 10
+
+      - name: Configure Headless Startup & Execute Quant Engine
+        shell: powershell
+        env:
+          PYTHONIOENCODING: "utf-8"
+          EXNESS_MT5_LOGIN: ${{ secrets.EXNESS_MT5_LOGIN }}
+          EXNESS_MT5_PASSWORD: ${{ secrets.EXNESS_MT5_PASSWORD }}
+          EXNESS_MT5_SERVER: ${{ secrets.EXNESS_MT5_SERVER }}
+          FINNHUB_API_KEY: ${{ secrets.FINNHUB_API_KEY }}
+        run: |
+          $mt5Path = Get-ChildItem -Path "C:\Program Files" `
+              -Filter "terminal64.exe" -Recurse -ErrorAction SilentlyContinue |
+              Select-Object -ExpandProperty FullName -First 1
+
+          if ($mt5Path) {
+              $mt5Dir = Split-Path -Path $mt5Path -Parent[cite: 1, 2]
+              $configPath = Join-Path -Path $mt5Dir -ChildPath "config.ini"[cite: 1, 2]
+              
+              "[Common]" | Out-File -FilePath $configPath -Encoding ascii[cite: 1, 2]
+              "Login=$env:EXNESS_MT5_LOGIN" | Out-File -FilePath $configPath -Encoding ascii -Append[cite: 1, 2]
+              "Password=$env:EXNESS_MT5_PASSWORD" | Out-File -FilePath $configPath -Encoding ascii -Append[cite: 1, 2]
+              "Server=$env:EXNESS_MT5_SERVER" | Out-File -FilePath $configPath -Encoding ascii -Append[cite: 1, 2]
+              "EnableNews=0" | Out-File -FilePath $configPath -Encoding ascii -Append[cite: 1, 2]
+              
+              Write-Host "Launching MT5 Terminal from: $mt5Path"[cite: 1, 2]
+              Start-Process -FilePath $mt5Path -ArgumentList "/config:`"$configPath`" /portable"[cite: 1, 2]
+              Start-Sleep -Seconds 25[cite: 1, 2]
+          } else {
+              Write-Host "Warning: terminal64.exe binary path not found."[cite: 1, 2]
+          }
+          
+          python multi_forex_quant_bot.py[cite: 1, 2]

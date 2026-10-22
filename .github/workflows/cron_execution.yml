@@ -1,0 +1,71 @@
+name: Multi-Forex Automated Quant Cycle
+
+on:
+  schedule:
+    - cron: '*/15 * * * 1-5'
+  workflow_dispatch:
+
+# Never let two runs overlap (two terminals would fight each other)
+concurrency:
+  group: quant-cycle
+  cancel-in-progress: false
+
+jobs:
+  run-quant-engine:
+    runs-on: windows-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout Repository Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install Python Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Download & Install Exness MT5 Terminal
+        shell: powershell
+        run: |
+          Write-Host "Downloading Exness MT5 Setup..."
+          $url = "https://download.mql5.com/cdn/web/exness.technologies.ltd/mt5/exness5setup.exe"
+          Invoke-WebRequest -Uri $url -OutFile "exness5setup.exe"
+
+          Write-Host "Installing MetaTrader 5 silently..."
+          Start-Process -FilePath ".\exness5setup.exe" -ArgumentList "/auto" -Wait
+          Start-Sleep -Seconds 10
+
+      - name: Run Quant Engine
+        shell: powershell
+        env:
+          PYTHONIOENCODING: "utf-8"
+          EXNESS_MT5_LOGIN: ${{ secrets.EXNESS_MT5_LOGIN }}
+          EXNESS_MT5_PASSWORD: ${{ secrets.EXNESS_MT5_PASSWORD }}
+          EXNESS_MT5_SERVER: ${{ secrets.EXNESS_MT5_SERVER }}
+          FINNHUB_API_KEY: ${{ secrets.FINNHUB_API_KEY }}
+        run: |
+          $mt5Path = Get-ChildItem -Path "C:\Program Files" -Filter "terminal64.exe" -Recurse -ErrorAction SilentlyContinue |
+              Select-Object -ExpandProperty FullName -First 1
+
+          if (-not $mt5Path) { throw "terminal64.exe not found after install" }
+          Write-Host "Found MT5 terminal: $mt5Path"
+          $env:MT5_PATH = $mt5Path
+
+          # Stop any terminal the installer auto-started, so Python launches a clean one
+          Get-Process terminal64 -ErrorAction SilentlyContinue | Stop-Process -Force
+          Start-Sleep -Seconds 3
+
+          python multi_forex_quant_bot.py
+
+      - name: Upload Trade Log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: trade-log-${{ github.run_id }}
+          path: trade_log.csv
+          if-no-files-found: ignore

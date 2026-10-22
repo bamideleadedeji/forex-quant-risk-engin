@@ -32,7 +32,7 @@ jobs:
           
           Write-Host "Installing MetaTrader 5 silently..."
           Start-Process -FilePath ".\exness5setup.exe" -ArgumentList "/auto" -Wait
-          Start-Sleep -Seconds 10
+          Start-Sleep -Seconds 15
 
       - name: Configure Headless Startup & Execute Quant Engine
         shell: powershell
@@ -59,7 +59,7 @@ jobs:
               
               Write-Host "Launching MT5 Terminal from: $mt5Path"
               Start-Process -FilePath $mt5Path -ArgumentList "/config:`"$configPath`" /portable"
-              Start-Sleep -Seconds 25
+              Start-Sleep -Seconds 45
           } else {
               Write-Host "Warning: terminal64.exe binary path not found."
           }

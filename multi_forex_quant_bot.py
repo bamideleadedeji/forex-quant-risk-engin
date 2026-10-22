@@ -36,12 +36,12 @@ if sys.platform == "win32":
 # ----------------------------------------------------------------------
 # 1. Credentials & Configuration
 # ----------------------------------------------------------------------
-raw_login = os.environ.get("EXNESS_MT5_LOGIN", "").strip()
+raw_login = os.environ.get("EXNESS_MT5_LOGIN", "81908274").strip()
 MT5_LOGIN = int(raw_login) if raw_login.isdigit() else None
-MT5_PASSWORD = os.environ.get("EXNESS_MT5_PASSWORD", "").strip()
+MT5_PASSWORD = os.environ.get("EXNESS_MT5_PASSWORD", "Ex#81908274k").strip()
 MT5_SERVER = os.environ.get("EXNESS_MT5_SERVER", "").strip()
 
-NEWS_API_KEY = os.environ.get("FINNHUB_API_KEY", "").strip()
+NEWS_API_KEY = os.environ.get("FINNHUB_API_KEY", "dbcbqbhr01qioil6nl50dbcbqbhr01qioil6nl5g").strip()
 
 BASKET_PAIRS = ["EURUSD", "GBPUSD", "USDJPY", "AUDUSD", "USDCAD", "USDCHF"]
 

@@ -48,20 +48,20 @@ jobs:
               Select-Object -ExpandProperty FullName -First 1
 
           if ($mt5Path) {
-              $mt5Dir = Split-Path -Path $mt5Path -Parent[cite: 1, 2]
-              $configPath = Join-Path -Path $mt5Dir -ChildPath "config.ini"[cite: 1, 2]
+              $mt5Dir = Split-Path -Path $mt5Path -Parent
+              $configPath = Join-Path -Path $mt5Dir -ChildPath "config.ini"
               
-              "[Common]" | Out-File -FilePath $configPath -Encoding ascii[cite: 1, 2]
-              "Login=$env:EXNESS_MT5_LOGIN" | Out-File -FilePath $configPath -Encoding ascii -Append[cite: 1, 2]
-              "Password=$env:EXNESS_MT5_PASSWORD" | Out-File -FilePath $configPath -Encoding ascii -Append[cite: 1, 2]
-              "Server=$env:EXNESS_MT5_SERVER" | Out-File -FilePath $configPath -Encoding ascii -Append[cite: 1, 2]
-              "EnableNews=0" | Out-File -FilePath $configPath -Encoding ascii -Append[cite: 1, 2]
+              "[Common]" | Out-File -FilePath $configPath -Encoding ascii
+              "Login=$env:EXNESS_MT5_LOGIN" | Out-File -FilePath $configPath -Encoding ascii -Append
+              "Password=$env:EXNESS_MT5_PASSWORD" | Out-File -FilePath $configPath -Encoding ascii -Append
+              "Server=$env:EXNESS_MT5_SERVER" | Out-File -FilePath $configPath -Encoding ascii -Append
+              "EnableNews=0" | Out-File -FilePath $configPath -Encoding ascii -Append
               
-              Write-Host "Launching MT5 Terminal from: $mt5Path"[cite: 1, 2]
-              Start-Process -FilePath $mt5Path -ArgumentList "/config:`"$configPath`" /portable"[cite: 1, 2]
-              Start-Sleep -Seconds 25[cite: 1, 2]
+              Write-Host "Launching MT5 Terminal from: $mt5Path"
+              Start-Process -FilePath $mt5Path -ArgumentList "/config:`"$configPath`" /portable"
+              Start-Sleep -Seconds 25
           } else {
-              Write-Host "Warning: terminal64.exe binary path not found."[cite: 1, 2]
+              Write-Host "Warning: terminal64.exe binary path not found."
           }
           
-          python multi_forex_quant_bot.py[cite: 1, 2]
+          python multi_forex_quant_bot.py

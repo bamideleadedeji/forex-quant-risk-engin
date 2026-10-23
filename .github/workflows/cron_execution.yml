@@ -5,7 +5,6 @@ on:
     - cron: '*/15 * * * 1-5'
   workflow_dispatch:
 
-# Never let two runs overlap (two terminals would fight each other)
 concurrency:
   group: quant-cycle
   cancel-in-progress: false
@@ -40,7 +39,7 @@ jobs:
           Start-Process -FilePath ".\exness5setup.exe" -ArgumentList "/auto" -Wait
           Start-Sleep -Seconds 10
 
-      - name: Run Quant Engine
+      - name: Configure Headless Startup & Execute Quant Engine
         shell: powershell
         env:
           PYTHONIOENCODING: "utf-8"
@@ -56,9 +55,21 @@ jobs:
           Write-Host "Found MT5 terminal: $mt5Path"
           $env:MT5_PATH = $mt5Path
 
-          # Stop any terminal the installer auto-started, so Python launches a clean one
           Get-Process terminal64 -ErrorAction SilentlyContinue | Stop-Process -Force
           Start-Sleep -Seconds 3
+
+          $mt5Dir = Split-Path -Path $mt5Path -Parent
+          $configPath = Join-Path -Path $mt5Dir -ChildPath "config.ini"
+
+          "[Common]" | Out-File -FilePath $configPath -Encoding ascii
+          "Login=$env:EXNESS_MT5_LOGIN" | Out-File -FilePath $configPath -Encoding ascii -Append
+          "Password=$env:EXNESS_MT5_PASSWORD" | Out-File -FilePath $configPath -Encoding ascii -Append
+          "Server=$env:EXNESS_MT5_SERVER" | Out-File -FilePath $configPath -Encoding ascii -Append
+          "EnableNews=0" | Out-File -FilePath $configPath -Encoding ascii -Append
+
+          Write-Host "Launching MT5 Terminal from: $mt5Path"
+          Start-Process -FilePath $mt5Path -ArgumentList "/config:`"$configPath`" /portable"
+          Start-Sleep -Seconds 30
 
           python multi_forex_quant_bot.py
 

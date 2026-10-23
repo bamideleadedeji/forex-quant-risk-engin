@@ -34,12 +34,17 @@ if sys.platform == "win32":
         pass
 
 # ----------------------------------------------------------------------
-# 1. Credentials & Configuration
+# 1. Credentials & Configuration (Demo Hardcoded Fallbacks)
 # ----------------------------------------------------------------------
 raw_login = os.environ.get("EXNESS_MT5_LOGIN", "81908274").strip()
-MT5_LOGIN = int(raw_login) if raw_login.isdigit() else None
+MT5_LOGIN = int(raw_login) if raw_login.isdigit() else 81908274
 MT5_PASSWORD = os.environ.get("EXNESS_MT5_PASSWORD", "9Xx_6CDvS8TBXhG").strip()
+if not MT5_PASSWORD:
+    MT5_PASSWORD = "9Xx_6CDvS8TBXhG"
+
 MT5_SERVER = os.environ.get("EXNESS_MT5_SERVER", "Exness-MT5Trial10").strip()
+if not MT5_SERVER:
+    MT5_SERVER = "Exness-MT5Trial10"
 
 NEWS_API_KEY = os.environ.get("FINNHUB_API_KEY", "dbcbqbhr01qioil6nl50dbcbqbhr01qioil6nl5g").strip()
 
@@ -56,8 +61,7 @@ MAGIC_NUMBER = 1008274
 LOG_FILE = os.environ.get("LOG_FILE", "trade_log.csv")
 LOOP_MINUTES = int(os.environ.get("LOOP_MINUTES", "0") or 0)
 
-# Remembers the last candle we acted on per symbol, to avoid duplicate
-# orders on the same signal (matters in loop mode)
+# Remembers the last candle we acted on per symbol
 _last_signal_bar = {}
 
 
@@ -101,10 +105,6 @@ def find_terminal_path():
 
 def connect_mt5(retries=5, wait=15) -> bool:
     """Starts/attaches to the terminal and logs in, with retries."""
-    if MT5_LOGIN is None or not MT5_PASSWORD or not MT5_SERVER:
-        print("[FAIL] Missing EXNESS_MT5_LOGIN / EXNESS_MT5_PASSWORD / EXNESS_MT5_SERVER.")
-        return False
-
     kwargs = dict(login=MT5_LOGIN, password=MT5_PASSWORD, server=MT5_SERVER, timeout=60000)
     path = find_terminal_path()
     if path:
@@ -147,11 +147,6 @@ def ensure_connection() -> bool:
 # 4. Macro News Filter (Finnhub)
 # ----------------------------------------------------------------------
 def is_news_blackout_active() -> tuple[bool, str]:
-    """
-    Checks the Finnhub economic calendar for high-impact events within
-    +/- NEWS_BLACKOUT_MINUTES. Fails OPEN: if the feed is unavailable the
-    bot keeps trading (the reason is printed).
-    """
     if not NEWS_API_KEY:
         return False, "News filter skipped (no FINNHUB_API_KEY)"
     try:
@@ -196,7 +191,6 @@ def is_news_blackout_active() -> tuple[bool, str]:
 # 5. Symbols, Sizing & Signal Engine
 # ----------------------------------------------------------------------
 def resolve_exness_symbol(base_pair: str) -> str:
-    """Finds the account's symbol name (e.g. EURUSD, EURUSDm, EURUSDz)."""
     if mt5.symbol_info(base_pair) is not None:
         mt5.symbol_select(base_pair, True)
         return base_pair
@@ -209,12 +203,10 @@ def resolve_exness_symbol(base_pair: str) -> str:
 
 
 def pip_size(info) -> float:
-    """One pip in price terms (handles 3/5-digit brokers)."""
     return info.point * 10 if info.digits in (3, 5) else info.point
 
 
 def normalize_volume(lots: float, info) -> float:
-    """Rounds lots to the symbol's volume step and min/max."""
     step = info.volume_step or 0.01
     vmin = info.volume_min or 0.01
     vmax = info.volume_max or 100.0
@@ -224,16 +216,10 @@ def normalize_volume(lots: float, info) -> float:
 
 
 def calculate_proportional_lots(equity: float) -> float:
-    """0.01 lot per $1,000 equity (minimum 0.01)."""
     return max(0.01, round(equity / 1000.0 * BASE_LOT_PER_1000_EQUITY, 2))
 
 
 def evaluate_market_signal(symbol: str):
-    """
-    EMA 9/21 crossover on CLOSED M15 candles only (start_pos=1 skips the
-    still-forming candle, so signals don't flicker and then vanish).
-    Returns (signal, bar_time) where signal is BUY, SELL or NEUTRAL.
-    """
     rates = mt5.copy_rates_from_pos(symbol, mt5.TIMEFRAME_M15, 1, 120)
     if rates is None or len(rates) < 60:
         return "NEUTRAL", None
@@ -257,7 +243,6 @@ def evaluate_market_signal(symbol: str):
 # 6. Order Execution
 # ----------------------------------------------------------------------
 def pick_filling_mode(info) -> int:
-    """Chooses a fill mode the symbol actually supports."""
     modes = info.filling_mode
     if modes & 2:
         return mt5.ORDER_FILLING_IOC
@@ -402,7 +387,6 @@ def run_cycle():
 # 8. Entry Point
 # ----------------------------------------------------------------------
 def seconds_until_next_candle(buffer_seconds=5) -> float:
-    """Seconds until just after the next M15 candle close."""
     now = datetime.now(timezone.utc)
     minutes_to_next = 15 - (now.minute % 15)
     nxt = (now + timedelta(minutes=minutes_to_next)).replace(second=0, microsecond=0)

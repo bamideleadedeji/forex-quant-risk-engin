@@ -3,8 +3,8 @@ Multi-Asset Proportional Risk Automation Engine (Exness MT5)
 
 Run modes
 ---------
-* Single cycle (default):      python multi_forex_quant_bot.py
-* Loop mode (e.g. 5h45m):      set LOOP_MINUTES=345 and run the same command.
+- Single cycle (default):      python multi_forex_quant_bot.py
+- Loop mode (e.g. 5h45m):      set LOOP_MINUTES=345 and run the same command.
   Loop mode connects to MT5 once and runs one cycle every 15 minutes,
   just after each M15 candle closes.
 
@@ -38,8 +38,8 @@ if sys.platform == "win32":
 # ----------------------------------------------------------------------
 raw_login = os.environ.get("EXNESS_MT5_LOGIN", "81908274").strip()
 MT5_LOGIN = int(raw_login) if raw_login.isdigit() else None
-MT5_PASSWORD = os.environ.get("EXNESS_MT5_PASSWORD", "Ex#81908274k").strip()
-MT5_SERVER = os.environ.get("EXNESS_MT5_SERVER", "").strip()
+MT5_PASSWORD = os.environ.get("EXNESS_MT5_PASSWORD", "9Xx_6CDvS8TBXhG").strip()
+MT5_SERVER = os.environ.get("EXNESS_MT5_SERVER", "Exness-MT5Trial10").strip()
 
 NEWS_API_KEY = os.environ.get("FINNHUB_API_KEY", "dbcbqbhr01qioil6nl50dbcbqbhr01qioil6nl5g").strip()
 
@@ -62,7 +62,7 @@ _last_signal_bar = {}
 
 
 # ----------------------------------------------------------------------
-# 2. Logging (so you can evaluate the 3-month demo properly)
+# 2. Logging
 # ----------------------------------------------------------------------
 def log_event(**row):
     """Appends one row to the CSV log."""
@@ -323,7 +323,7 @@ def execute_market_order(symbol: str, order_type: str, base_lots: float) -> bool
 
 
 # ----------------------------------------------------------------------
-# 7. One Trading Cycle (assumes MT5 is already connected)
+# 7. One Trading Cycle
 # ----------------------------------------------------------------------
 def run_cycle():
     timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
@@ -345,7 +345,6 @@ def run_cycle():
     equity, balance = account.equity, account.balance
     base_lots = calculate_proportional_lots(equity)
 
-    # Count only positions opened by this bot
     all_positions = mt5.positions_get() or []
     my_positions = [p for p in all_positions if p.magic == MAGIC_NUMBER]
     open_count = len(my_positions)
@@ -380,7 +379,7 @@ def run_cycle():
         if symbol in open_symbols:
             continue
         if bar_time is not None and _last_signal_bar.get(symbol) == bar_time:
-            continue  # already acted on this candle
+            continue
         if spread_pips > MAX_SPREAD_PIPS:
             print(f"     [SKIP] Spread {spread_pips} pips exceeds limit {MAX_SPREAD_PIPS}.")
             log_event(symbol=symbol, signal=signal, result=f"skipped_spread_{spread_pips}")

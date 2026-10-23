@@ -316,6 +316,9 @@ def run_cycle():
     print(f"[{timestamp} UTC] Multi-Asset Proportional Risk Engine (Exness MT5)")
     print("=" * 66)
 
+    # Auto-initialize trade_log.csv on cycle start so artifact upload always succeeds
+    log_event(symbol="SYSTEM", signal="INIT", result="cycle_executed")
+
     is_news, news_msg = is_news_blackout_active()
     print(f"• News filter: {news_msg}")
     if is_news:
